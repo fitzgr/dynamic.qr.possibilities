@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dynamic QR Possibilities Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script defer type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
+  <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
+
+  <main class="app-shell" id="appShell">
+    <header class="hero">
+      <p class="kicker">Dynamic QR Playground</p>
+      <h1>Trigger Real Phone Actions from a Dynamic QR Landing Page</h1>
+      <p class="subtitle">
+        Build once, change anytime. Generate a QR that opens this web app on a phone,
+        then launch calls, texts, maps, app links, Wi-Fi payloads, and more.
+      </p>
+    </header>
+
+    <section class="layout" id="builderView">
+      <article class="panel builder-panel">
+        <h2>1) Configure Trigger</h2>
+        <form id="configForm" class="config-form"></form>
+
+        <div class="switch-row">
+          <label class="switch-label" for="encodeMode">
+            QR Mode
+            <select id="encodeMode" name="encodeMode">
+              <option value="dynamic">Dynamic landing URL</option>
+              <option value="direct">Direct payload</option>
+            </select>
+          </label>
+
+          <label class="checkbox">
+            <input id="autoplay" type="checkbox" />
+            Auto-launch on page load (best effort)
+          </label>
+        </div>
+
+        <div class="preset-row">
+          <button type="button" class="btn ghost" data-preset="restaurant">Restaurant</button>
+          <button type="button" class="btn ghost" data-preset="event">Event</button>
+          <button type="button" class="btn ghost" data-preset="support">Customer Support</button>
+          <button type="button" class="btn ghost" data-preset="retail">Retail Promo</button>
+        </div>
+      </article>
+
+      <article class="panel output-panel">
+        <h2>2) Generate + Test</h2>
+        <div class="qr-wrap">
+          <canvas id="qrCanvas" width="320" height="320" aria-label="Generated QR code"></canvas>
+        </div>
+
+        <div class="meta-block">
+          <p class="label">Action URI</p>
+          <textarea id="actionUri" readonly></textarea>
+        </div>
+
+        <div class="meta-block">
+          <p class="label">Encoded in QR</p>
+          <textarea id="qrValue" readonly></textarea>
+        </div>
+
+        <div class="button-row">
+          <button id="copyValueBtn" class="btn" type="button">Copy QR Value</button>
+          <button id="downloadBtn" class="btn" type="button">Download PNG</button>
+          <button id="openRunnerBtn" class="btn accent" type="button">Open Landing Page</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="phone-lab" id="phoneLab">
+      <article class="panel">
+        <h2>3) Phone Capabilities Lab</h2>
+        <p>
+          These actions run in-browser after the QR opens this page on a phone.
+          Some features need HTTPS and user permission.
+        </p>
+        <div class="button-row">
+          <button class="btn" id="btnShare" type="button">Share Sheet</button>
+          <button class="btn" id="btnVibrate" type="button">Vibrate</button>
+          <button class="btn" id="btnGeo" type="button">Get Location</button>
+          <button class="btn" id="btnNotify" type="button">Ask Notification Permission</button>
+        </div>
+        <pre id="labOutput" class="lab-output">Ready.</pre>
+      </article>
+    </section>
+
+    <section class="possibilities" id="possibilities">
+      <article class="panel">
+        <h2>4) Dynamic QR Possibilities Playbook</h2>
+        <p>
+          This section is the built-in readme for your demo page. Filter by keyword and show people
+          exactly what each QR action can trigger on a phone.
+        </p>
+        <label class="field" for="possibilitySearch">
+          <span>Filter capabilities</span>
+          <input id="possibilitySearch" type="text" placeholder="Try: payment, maps, app, wifi, calendar" />
+        </label>
+        <div id="possibilityGrid" class="possibility-grid"></div>
+      </article>
+    </section>
+
+    <section class="runner-view hidden" id="runnerView" aria-live="polite">
+      <article class="panel runner-panel">
+        <p class="kicker">QR Landing Action</p>
+        <h2 id="runnerTitle">Action Ready</h2>
+        <p id="runnerDescription"></p>
+        <p class="runner-uri" id="runnerUri"></p>
+        <div class="button-row">
+          <button id="runActionBtn" class="btn accent" type="button">Launch Action</button>
+          <button id="backBuilderBtn" class="btn ghost" type="button">Back to Builder</button>
+        </div>
+        <pre id="runnerOutput" class="lab-output">Waiting for action.</pre>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
