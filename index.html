@@ -35,6 +35,7 @@
             <select id="encodeMode" name="encodeMode">
               <option value="dynamic">Dynamic landing URL</option>
               <option value="direct">Direct payload</option>
+              <option value="contextual">Static QR (context-aware landing)</option>
             </select>
           </label>
 
@@ -66,6 +67,11 @@
         <div class="meta-block">
           <p class="label">Encoded in QR</p>
           <textarea id="qrValue" readonly></textarea>
+        </div>
+
+        <div class="meta-block">
+          <p class="label">Static Context Landing URL</p>
+          <textarea id="staticQrValue" readonly></textarea>
         </div>
 
         <div class="button-row">
@@ -114,8 +120,10 @@
         <h2 id="runnerTitle">Action Ready</h2>
         <p id="runnerDescription"></p>
         <p class="runner-uri" id="runnerUri"></p>
+        <pre id="runnerContext" class="lab-output hidden">Context details</pre>
         <div class="button-row">
           <button id="runActionBtn" class="btn accent" type="button">Launch Action</button>
+          <button id="rerouteBtn" class="btn" type="button">Re-evaluate with Location</button>
           <button id="backBuilderBtn" class="btn ghost" type="button">Back to Builder</button>
         </div>
         <pre id="runnerOutput" class="lab-output">Waiting for action.</pre>

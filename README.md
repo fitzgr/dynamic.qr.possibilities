@@ -6,7 +6,35 @@ An interactive web app for demonstrating how one QR code can trigger many possib
 
 - Show dynamic QR strategy: encode a landing URL and change behavior without reprinting physical materials.
 - Show direct QR payload strategy: encode final action payload directly for immediate launch.
+- Show static QR strategy: one fixed QR URL that adapts landing behavior from phone context.
 - Provide an on-page readme-like playbook for stakeholders during live demos.
+
+## Static QR context-aware routing
+
+This project now supports a fixed landing URL for the QR code:
+
+- `https://<your-host>/<path>?entry=1`
+
+When users load that static URL, the landing page evaluates context signals and chooses the best action route.
+
+Signals used:
+
+1. Time of day (`hour24`)
+2. Day of week (`isWeekend`)
+3. Minute bucket (`0..11`, using 5-minute buckets)
+4. Device platform (iOS, Android, web)
+5. Returning visitor status (localStorage)
+6. Optional geolocation distance (when user grants permission)
+
+Rule examples included:
+
+1. Weekday business hours -> call route
+2. Weekday evening -> SMS support route
+3. Weekend -> maps destination route
+4. iOS -> FaceTime route
+5. Android -> intent deep-link route
+6. Nearby user -> in-store coupon payload
+7. Fallback minute-bucket campaign URL
 
 ## Possibilities included
 
@@ -80,11 +108,22 @@ npm run test:watch
 ## Demo flow for stakeholders
 
 1. Choose an action in the builder.
-2. Toggle QR mode between dynamic and direct.
-3. Scan on phone and show runner behavior.
+2. Toggle QR mode to `Static QR (context-aware landing)`.
+3. Scan on phone and show context-selected route behavior.
 4. Use presets to quickly pivot between use cases.
 5. Open the built-in possibilities playbook section and filter by category.
-6. Show device APIs from the Phone Capabilities Lab.
+6. On context landing, use `Re-evaluate with Location` to demonstrate geolocation-aware rerouting.
+7. Show device APIs from the Phone Capabilities Lab.
+
+## Context routing test checklist
+
+1. Weekday between 9:00 and 16:59 local time should resolve to phone route.
+2. Weekday between 17:00 and 22:59 should resolve to SMS route.
+3. Weekend should resolve to maps route.
+4. iOS user agent (outside time/day rules) should resolve to FaceTime route.
+5. Android user agent (outside time/day rules) should resolve to intent route.
+6. Returning visitor should resolve to review route when earlier rules do not match.
+7. Granting location near the configured store coordinates should resolve to nearby coupon route.
 
 ## Important behavior notes
 

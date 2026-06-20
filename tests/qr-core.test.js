@@ -3,10 +3,15 @@ import {
   buildActionUri,
   buildRunUrl,
   buildQrValue,
+  buildStaticLandingUrl,
   cleanPhone,
   escapeWifi,
   escapeText,
-  ACTIONS
+  ACTIONS,
+  resolveContextRoute,
+  computeMinuteBucket,
+  detectPlatform,
+  distanceKm
 } from "../qr-core.js";
 
 describe("qr-core helpers", () => {
@@ -76,7 +81,54 @@ describe("qr value strategy", () => {
     expect(buildQrValue("direct", "run-url", "action-uri")).toBe("action-uri");
   });
 
+  it("returns static landing url when mode is contextual", () => {
+    expect(buildQrValue("contextual", "run-url", "action-uri", "static-url")).toBe("static-url");
+  });
+
+  it("builds static landing url", () => {
+    expect(buildStaticLandingUrl("https://demo.example/app")).toBe("https://demo.example/app?entry=1");
+  });
+
   it("has many action possibilities for demos", () => {
     expect(Object.keys(ACTIONS).length).toBeGreaterThanOrEqual(15);
+  });
+});
+
+describe("context routing", () => {
+  it("detects platform", () => {
+    expect(detectPlatform("Mozilla iPhone")).toBe("ios");
+    expect(detectPlatform("Mozilla Android")).toBe("android");
+    expect(detectPlatform("Mozilla Desktop")).toBe("web");
+  });
+
+  it("computes minute bucket", () => {
+    expect(computeMinuteBucket(0)).toBe(0);
+    expect(computeMinuteBucket(59)).toBe(11);
+  });
+
+  it("computes distance between coordinates", () => {
+    const dist = distanceKm(43.7579, -79.2365, 43.7579, -79.2365);
+    expect(dist).toBeLessThan(0.01);
+  });
+
+  it("routes weekday daytime users to phone", () => {
+    const result = resolveContextRoute({
+      minute: 12,
+      hour24: 10,
+      dayOfWeek: 2,
+      isWeekend: false,
+      platform: "web",
+      deviceType: "mobile",
+      language: "en-CA",
+      timezone: "America/Toronto",
+      localTimeLabel: "10:12",
+      hasVisitedBefore: false,
+      referrer: "direct",
+      locationGranted: false,
+      distanceKm: null
+    });
+
+    expect(result.actionKey).toBe("phone");
+    expect(result.uri).toContain("tel:");
   });
 });

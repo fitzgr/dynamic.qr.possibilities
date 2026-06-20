@@ -273,6 +273,83 @@ export const PRESETS = {
   }
 };
 
+export const CONTEXT_RULES = [
+  {
+    id: "nearby-store",
+    title: "Nearby visitor promo",
+    description: "If the user is near the store, send them to an in-store instant offer.",
+    match: (ctx) => ctx.locationGranted && typeof ctx.distanceKm === "number" && ctx.distanceKm <= 5,
+    action: "coupon",
+    values: (ctx) => ({
+      code: `NEARBY${String(ctx.hour24).padStart(2, "0")}`,
+      desc: `Welcome nearby visitor (${ctx.distanceKm.toFixed(1)} km)`
+    })
+  },
+  {
+    id: "weekday-open-hours",
+    title: "Weekday office hours",
+    description: "During weekday business hours, route to direct call.",
+    match: (ctx) => !ctx.isWeekend && ctx.hour24 >= 9 && ctx.hour24 < 17,
+    action: "phone",
+    values: () => ({ number: "+15551234567" })
+  },
+  {
+    id: "weekday-evening-support",
+    title: "Weekday evening support",
+    description: "After hours on weekdays, route to SMS support.",
+    match: (ctx) => !ctx.isWeekend && ctx.hour24 >= 17 && ctx.hour24 < 23,
+    action: "sms",
+    values: (ctx) => ({
+      number: "+15551234567",
+      body: `Hi, I scanned the QR at ${ctx.localTimeLabel}. Please contact me.`
+    })
+  },
+  {
+    id: "weekend-footfall",
+    title: "Weekend destination",
+    description: "On weekends, direct users to maps or event destination.",
+    match: (ctx) => ctx.isWeekend,
+    action: "maps",
+    values: () => ({ query: "Cedarbrae Mall, Scarborough" })
+  },
+  {
+    id: "ios-preferred",
+    title: "iOS concierge route",
+    description: "Route iOS users to FaceTime support.",
+    match: (ctx) => ctx.platform === "ios",
+    action: "facetime",
+    values: () => ({ target: "+15551234567" })
+  },
+  {
+    id: "android-preferred",
+    title: "Android app route",
+    description: "Route Android users to intent-based app deep link.",
+    match: (ctx) => ctx.platform === "android",
+    action: "intent",
+    values: () => ({
+      hostPath: "scan/#Intent;scheme=zxing;package=com.example.app;S.browser_fallback_url=https://example.com/app;end"
+    })
+  },
+  {
+    id: "returning-visitor",
+    title: "Returning visitor nurture",
+    description: "If this device has visited before, ask for review.",
+    match: (ctx) => ctx.hasVisitedBefore,
+    action: "review",
+    values: () => ({ url: "https://example.com/reviews" })
+  },
+  {
+    id: "minute-bucket-campaign",
+    title: "Minute bucket campaign",
+    description: "Use minute bucket, day, and hour to personalize campaign destination.",
+    match: () => true,
+    action: "url",
+    values: (ctx) => ({
+      target: `https://example.com/campaign?bucket=${ctx.minuteBucket}&dow=${ctx.dayOfWeek}&hour=${ctx.hour24}&tz=${encodeURIComponent(ctx.timezone || "")}`
+    })
+  }
+];
+
 export function buildActionUri(actionKey, values) {
   const actionDef = ACTIONS[actionKey] || ACTIONS.url;
   return actionDef.toUri(values || {});
@@ -291,8 +368,72 @@ export function buildRunUrl(baseUrl, actionKey, values, autoplay) {
   return `${baseUrl}?${runParams.toString()}`;
 }
 
-export function buildQrValue(mode, runUrl, actionUri) {
-  return mode === "dynamic" ? runUrl : actionUri;
+export function buildStaticLandingUrl(baseUrl) {
+  return `${baseUrl}?entry=1`;
+}
+
+export function buildQrValue(mode, runUrl, actionUri, staticUrl) {
+  if (mode === "dynamic") {
+    return runUrl;
+  }
+
+  if (mode === "contextual") {
+    return staticUrl;
+  }
+
+  return actionUri;
+}
+
+export function detectPlatform(userAgent = "") {
+  const ua = String(userAgent).toLowerCase();
+  if (ua.includes("android")) {
+    return "android";
+  }
+  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) {
+    return "ios";
+  }
+  return "web";
+}
+
+export function computeMinuteBucket(minute) {
+  const parsed = Number.isFinite(minute) ? minute : Number(minute) || 0;
+  return Math.max(0, Math.min(11, Math.floor(parsed / 5)));
+}
+
+export function distanceKm(aLat, aLon, bLat, bLon) {
+  const toRad = (n) => (n * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const x = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+    + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat))
+    * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  return earthKm * c;
+}
+
+export function resolveContextRoute(context) {
+  const ctx = {
+    ...context,
+    minuteBucket: computeMinuteBucket(context.minute)
+  };
+
+  const matched = CONTEXT_RULES.find((rule) => rule.match(ctx)) || CONTEXT_RULES[CONTEXT_RULES.length - 1];
+  const values = matched.values(ctx);
+  const actionKey = matched.action;
+  const action = ACTIONS[actionKey] || ACTIONS.url;
+  const uri = buildActionUri(actionKey, values);
+
+  return {
+    ruleId: matched.id,
+    ruleTitle: matched.title,
+    ruleDescription: matched.description,
+    actionKey,
+    actionTitle: action.title,
+    values,
+    uri,
+    context: ctx
+  };
 }
 
 export function cleanPhone(value) {

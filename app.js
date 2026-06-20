@@ -4,12 +4,17 @@ import {
   PRESETS,
   buildActionUri,
   buildRunUrl,
-  buildQrValue
+  buildQrValue,
+  buildStaticLandingUrl,
+  resolveContextRoute,
+  detectPlatform,
+  distanceKm
 } from "./qr-core.js";
 
 const state = {
   action: "url",
-  values: { ...ACTIONS.url.defaultValues }
+  values: { ...ACTIONS.url.defaultValues },
+  contextResolution: null
 };
 
 const refs = {
@@ -22,6 +27,7 @@ const refs = {
   qrCanvas: document.getElementById("qrCanvas"),
   actionUri: document.getElementById("actionUri"),
   qrValue: document.getElementById("qrValue"),
+  staticQrValue: document.getElementById("staticQrValue"),
   copyValueBtn: document.getElementById("copyValueBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
   openRunnerBtn: document.getElementById("openRunnerBtn"),
@@ -29,7 +35,9 @@ const refs = {
   runnerTitle: document.getElementById("runnerTitle"),
   runnerDescription: document.getElementById("runnerDescription"),
   runnerUri: document.getElementById("runnerUri"),
+  runnerContext: document.getElementById("runnerContext"),
   runActionBtn: document.getElementById("runActionBtn"),
+  rerouteBtn: document.getElementById("rerouteBtn"),
   backBuilderBtn: document.getElementById("backBuilderBtn"),
   runnerOutput: document.getElementById("runnerOutput")
 };
@@ -43,6 +51,11 @@ function init() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get("run") === "1") {
     showRunner(urlParams);
+    return;
+  }
+
+  if (urlParams.get("entry") === "1") {
+    showContextLanding();
     return;
   }
 
@@ -123,7 +136,9 @@ function makeField(label, name, kind, options = {}) {
 function attachBuilderEvents() {
   refs.encodeMode.addEventListener("change", render);
   refs.autoplay.addEventListener("change", render);
-  refs.possibilitySearch.addEventListener("input", renderPossibilities);
+  if (refs.possibilitySearch) {
+    refs.possibilitySearch.addEventListener("input", renderPossibilities);
+  }
 
   document.querySelectorAll("[data-preset]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -148,15 +163,17 @@ function attachBuilderEvents() {
   });
 
   refs.downloadBtn.addEventListener("click", () => {
+    const mode = refs.encodeMode.value;
     const link = document.createElement("a");
     link.href = refs.qrCanvas.toDataURL("image/png");
-    link.download = `qr-${state.action}.png`;
+    link.download = mode === "contextual" ? "qr-static-context.png" : `qr-${state.action}.png`;
     link.click();
   });
 
   refs.openRunnerBtn.addEventListener("click", () => {
-    const { runUrl } = buildValues();
-    window.open(runUrl, "_blank", "noopener,noreferrer");
+    const { runUrl, staticUrl } = buildValues();
+    const target = refs.encodeMode.value === "contextual" ? staticUrl : runUrl;
+    window.open(target, "_blank", "noopener,noreferrer");
   });
 }
 
@@ -223,22 +240,27 @@ function attachLabEvents() {
 }
 
 function buildValues() {
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
   const actionUri = buildActionUri(state.action, state.values);
   const runUrl = buildRunUrl(
-    `${window.location.origin}${window.location.pathname}`,
+    baseUrl,
     state.action,
     state.values,
     refs.autoplay.checked
   );
-  const qrValue = buildQrValue(refs.encodeMode.value, runUrl, actionUri);
+  const staticUrl = buildStaticLandingUrl(baseUrl);
+  const qrValue = buildQrValue(refs.encodeMode.value, runUrl, actionUri, staticUrl);
 
-  return { actionUri, runUrl, qrValue };
+  return { actionUri, runUrl, qrValue, staticUrl };
 }
 
 async function render() {
-  const { actionUri, qrValue } = buildValues();
-  refs.actionUri.value = actionUri;
+  const { actionUri, qrValue, staticUrl } = buildValues();
+  refs.actionUri.value = refs.encodeMode.value === "contextual"
+    ? "Context router decides final action at runtime using time/day/device/location signals."
+    : actionUri;
   refs.qrValue.value = qrValue;
+  refs.staticQrValue.value = staticUrl;
 
   try {
     await QRCode.toCanvas(refs.qrCanvas, qrValue, {
@@ -254,10 +276,118 @@ async function render() {
   }
 }
 
+async function showContextLanding() {
+  refs.builderView.classList.add("hidden");
+  document.getElementById("phoneLab").classList.add("hidden");
+  document.getElementById("possibilities").classList.add("hidden");
+  refs.runnerView.classList.remove("hidden");
+  refs.runnerContext.classList.remove("hidden");
+  refs.rerouteBtn.classList.remove("hidden");
+
+  await rerouteFromContext(false);
+
+  refs.runActionBtn.onclick = () => {
+    if (!state.contextResolution) {
+      return;
+    }
+    launchAction(state.contextResolution.actionKey, state.contextResolution.uri);
+  };
+
+  refs.rerouteBtn.onclick = async () => {
+    await rerouteFromContext(true);
+  };
+
+  refs.backBuilderBtn.onclick = () => {
+    window.location.href = `${window.location.origin}${window.location.pathname}`;
+  };
+}
+
+async function rerouteFromContext(includeLocation) {
+  const context = await gatherVisitorContext(includeLocation);
+  const resolved = resolveContextRoute(context);
+  state.contextResolution = resolved;
+
+  refs.runnerTitle.textContent = `Context Route: ${resolved.actionTitle}`;
+  refs.runnerDescription.textContent = `${resolved.ruleTitle}. ${resolved.ruleDescription}`;
+  refs.runnerUri.textContent = resolved.uri;
+  refs.runnerOutput.textContent = `Resolved by rule '${resolved.ruleId}' with minute bucket ${resolved.context.minuteBucket}.`;
+
+  const ctx = resolved.context;
+  refs.runnerContext.textContent = [
+    `time=${ctx.localTimeLabel}`,
+    `weekday=${ctx.dayOfWeek} (weekend=${ctx.isWeekend})`,
+    `platform=${ctx.platform} device=${ctx.deviceType}`,
+    `timezone=${ctx.timezone}`,
+    `language=${ctx.language}`,
+    `returningVisitor=${ctx.hasVisitedBefore}`,
+    `referrer=${ctx.referrer || "direct"}`,
+    `locationGranted=${ctx.locationGranted}`,
+    `distanceKm=${typeof ctx.distanceKm === "number" ? ctx.distanceKm.toFixed(2) : "n/a"}`
+  ].join("\n");
+}
+
+async function gatherVisitorContext(includeLocation) {
+  const now = new Date();
+  const userAgent = navigator.userAgent || "";
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const minute = now.getMinutes();
+  const hour24 = now.getHours();
+  const dayOfWeek = now.getDay();
+  const hasVisitedBefore = localStorage.getItem("dqr_seen") === "1";
+  localStorage.setItem("dqr_seen", "1");
+
+  const context = {
+    minute,
+    hour24,
+    dayOfWeek,
+    isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+    platform: detectPlatform(userAgent),
+    deviceType: /mobile|iphone|android/i.test(userAgent) ? "mobile" : "desktop",
+    language: navigator.language || "unknown",
+    timezone,
+    localTimeLabel: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    hasVisitedBefore,
+    referrer: document.referrer || "direct",
+    locationGranted: false,
+    distanceKm: null
+  };
+
+  if (!includeLocation || !navigator.geolocation) {
+    return context;
+  }
+
+  const position = await getPositionSafe();
+  if (!position) {
+    return context;
+  }
+
+  const storeLat = 43.7579;
+  const storeLon = -79.2365;
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
+
+  context.locationGranted = true;
+  context.distanceKm = distanceKm(lat, lon, storeLat, storeLon);
+  return context;
+}
+
+function getPositionSafe() {
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(position),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 9000 }
+    );
+  });
+}
+
 function showRunner(params) {
   refs.builderView.classList.add("hidden");
   document.getElementById("phoneLab").classList.add("hidden");
+  document.getElementById("possibilities").classList.add("hidden");
   refs.runnerView.classList.remove("hidden");
+  refs.rerouteBtn.classList.add("hidden");
+  refs.runnerContext.classList.add("hidden");
 
   const actionKey = params.get("action") || "url";
   const actionDef = ACTIONS[actionKey] || ACTIONS.url;
@@ -272,13 +402,13 @@ function showRunner(params) {
   refs.runnerDescription.textContent = actionDef.description;
   refs.runnerUri.textContent = uri;
 
-  refs.runActionBtn.addEventListener("click", () => {
+  refs.runActionBtn.onclick = () => {
     launchAction(actionKey, uri);
-  });
+  };
 
-  refs.backBuilderBtn.addEventListener("click", () => {
+  refs.backBuilderBtn.onclick = () => {
     window.location.href = `${window.location.origin}${window.location.pathname}`;
-  });
+  };
 
   if (params.get("autoplay") === "1") {
     setTimeout(() => launchAction(actionKey, uri), 300);
@@ -311,6 +441,10 @@ function writeLab(text) {
 }
 
 function renderPossibilities() {
+  if (!refs.possibilitySearch || !refs.possibilityGrid) {
+    return;
+  }
+
   const filter = (refs.possibilitySearch.value || "").trim().toLowerCase();
   refs.possibilityGrid.innerHTML = "";
 
